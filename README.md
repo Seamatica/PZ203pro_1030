@@ -1,0 +1,15 @@
+## How to Setup Project
+
+### Run these Commands in CMD prompt one by one within this directory:
+- "C:\Xilinx\Vivado\2019.1\settings64.bat" && vivado -mode tcl
+    - Find your specific path for settings64.bat   
+- source PZ_PZP101_NO_OS.tcl
+
+### Once the project builds move the "PZ_PZP101_NO_OS.sdk" to the PZ_PZP101_NO_OS folder
+
+
+
+### Reminder: Update source files in rtl folder.
+
+
+### To Do: Use a new project folder structure that can ease the modification of .tcl the most.
