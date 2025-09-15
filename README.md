@@ -3,11 +3,11 @@
 ### Run these Commands in CMD prompt one by one within this directory:
 - "C:\Xilinx\Vivado\2019.1\settings64.bat" && vivado -mode tcl
     - Find your specific path for settings64.bat   
-- source PZ_PZP101_NO_OS.tcl
+- source PZ_PZP201_PRO_NO_OS.tcl
 
-### Once the project builds move the "PZ_PZP101_NO_OS.sdk" to the PZ_PZP101_NO_OS folder
+### Open the new folder PZ_PZP201_PRO_NO_OS, open the vivado project, generate the bitstream.
 
-
+### c code is not updated
 
 ### Reminder: Update source files in rtl folder.
 
