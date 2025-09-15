@@ -7,7 +7,7 @@
 
 ### Open the new folder PZ_PZP201_PRO_NO_OS, open the vivado project, generate the bitstream.
 
-- After bitstream generation
+### After bitstream generation
 - In Vivado, export hardware, then launch SDK
 - In SDK, click File/New/Application Project
 - Put a descriptive project name (say "test"), click Next
