@@ -8,6 +8,8 @@
 *.sim/
 PZ_PZP201_PRO_NO_OS/
 PZ_PZP201_PRO_NO_OS.srcs/
+Packages/
+
 
 # xilinx project
 *.xpr
