@@ -7,9 +7,9 @@
 
 ### Open the new folder PZ_PZP201_PRO_NO_OS, open the vivado project, generate the bitstream.
 
-### c code is not updated
-
-### Reminder: Update source files in rtl folder.
-
-
-### To Do: Use a new project folder structure that can ease the modification of .tcl the most.
+After bitstream generation
+In Vivado, export hardware, then launch SDK
+In SDK, click File/New/Application Project
+Put a descriptive project name (say "test"), click Next
+Choose Empty Application, clikc Finish
+Copy the files in sdk_source folder, paste them into test/src folder.
