@@ -1,0 +1,31 @@
+# folders
+.Xil/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sdk/
+*.sim/
+PZ_PZP201_PRO_NO_OS/
+*.srcs/
+Packages/
+
+
+# xilinx project
+*.xpr
+*.xpr.pb
+
+# Logs
+*.jou
+*.log
+*.str
+*.tmp
+*.txt
+
+# WebTalk usage statistics files
+webtalk*.html
+webtalk*.xml
+
+
+# Other generated folders you might have
+NA/
