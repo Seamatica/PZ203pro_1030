@@ -94,7 +94,7 @@ wire          tx_start_en;
 //end
 
 
-//assign tx_start_en = trigger_valid;
+assign tx_start_en = trigger_valid;
 
 // Data payload generator
 // 24 bytes => 6 words
