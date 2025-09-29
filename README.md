@@ -15,10 +15,10 @@ This is the stable version for 1030 on pz203. Outputs 11 bytes.
 - Put a descriptive project name (say "test"), click Next
 - Choose Empty Application, clikc Finish
 - Copy the files in sdk_source folder, paste them into test/src folder.
-- If no serial output, go to test_bsp/ps7_cortexa9_0/include/xparameters.h, ###change
+- If no serial output, go to test_bsp/ps7_cortexa9_0/include/xparameters.h, change
 #define STDIN_BASEADDRESS 0xE0000000
 #define STDOUT_BASEADDRESS 0xE0000000
-###to
+to
 #define STDIN_BASEADDRESS 0xE0001000
 #define STDOUT_BASEADDRESS 0xE0001000
 
