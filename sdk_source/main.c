@@ -66,6 +66,9 @@
 
 #include "gpsdo.h"
 
+#include "xscugic.h"
+#include "gps_validation.h"
+
 /******************************************************************************/
 /************************ Variables Definitions *******************************/
 /******************************************************************************/
@@ -106,6 +109,85 @@
 XGpio axi_gpio_inst_0; // AXI GPIO 0 instance, for device ID
 XGpio axi_gpio_inst_1; // AXI GPIO 1 instance, for mode_ac_edge_detector threshold
 
+/***************************************************************************************************/
+XScuGic InterruptController;
+
+
+// Define GPS message
+#define GPS_IP_BASEADDR XPAR_GPS_MESSAGE_0_S00_AXI_BASEADDR
+// Register Offsets
+#define REG_LATITUDE    0x00
+#define REG_LONGITUDE   0x04
+#define REG_ALT_TYPE    0x08
+#define REG_MOTION      0x0C
+#define REG_TIME        0x10
+#define REG_DATE        0x14
+#define REG_CONTROL     0x18
+
+typedef struct {
+    uint32_t utc_time;
+    uint16_t date;
+    int32_t  latitude;
+    int32_t  longitude;
+    uint32_t ellipsoid_height;
+    uint16_t ground_speed;
+    uint16_t ground_heading;
+    uint8_t  type;
+} gps_message_t;
+
+// --- helpers: 16/24/32-bit readers ---
+static inline uint16_t rd16_be(const uint8_t *p){ return (uint16_t)p[0]<<8 | p[1]; }
+static inline uint32_t rd24_be(const uint8_t *p){ return ((uint32_t)p[0]<<16) | ((uint32_t)p[1]<<8) | p[2]; }
+static inline int32_t sign_extend24(uint32_t v) { return (v & 0x00800000U) ? (int32_t)(v | 0xFF000000U) : (int32_t)v; }
+
+
+static void gps_from_pl_pkt_be(const uint8_t *p, size_t pl_len, gps_message_t *g)
+{
+    size_t i = 0;
+    g->utc_time         = rd24_be(p + i); i += 3;                 // 24 -> 32 (lower 24 valid)
+    g->date             = rd16_be(p + i); i += 2;                 // 16
+
+    g->latitude         = sign_extend24(rd24_be(p + i)); i += 3;  // 24s -> 32s
+    g->longitude        = sign_extend24(rd24_be(p + i)); i += 3;  // 24s -> 32s
+
+    g->ellipsoid_height = rd24_be(p + i); i += 3;                 // 24u -> 32u
+    g->ground_speed     = rd16_be(p + i); i += 2;                 // 16u
+
+    // last two bytes carry {type:4, heading:12}
+    if (pl_len > i + 2) i = pl_len - 2;
+    if (pl_len >= i + 2) {
+        uint16_t last = rd16_be(p + i);
+        g->type           = (uint8_t)((last >> 12) & 0x0F);       // 4 -> 8 (stored low 4)
+        g->ground_heading = (uint16_t)(last & 0x0FFF);            // 12 -> 16 (stored low 12)
+    } else {
+        g->type = 0; g->ground_heading = 0;
+    }
+}
+
+void send_gps_to_pl(const gps_message_t* gps)
+{
+    // lat/lon: treat as raw 32-bit when sending to PL
+    Xil_Out32(GPS_IP_BASEADDR + REG_LATITUDE,  (uint32_t)gps->latitude);
+    Xil_Out32(GPS_IP_BASEADDR + REG_LONGITUDE, (uint32_t)gps->longitude);
+
+    // alt/type packed: [type:4 | height:24]
+    uint32_t alt_type = ((uint32_t)(gps->type & 0x0F) << 24) |
+                        ((uint32_t)(gps->ellipsoid_height & 0x00FFFFFF));
+    Xil_Out32(GPS_IP_BASEADDR + REG_ALT_TYPE, alt_type);
+
+    // speed/heading packed: [heading:12 | speed:16] (top 4 of the 32-bit word are 0)
+    uint32_t motion = ((uint32_t)(gps->ground_heading & 0x0FFF) << 16) |
+                      ((uint32_t)(gps->ground_speed  & 0xFFFF));
+    Xil_Out32(GPS_IP_BASEADDR + REG_MOTION, motion);
+
+	// time/date (mask to widths)
+	Xil_Out32(GPS_IP_BASEADDR + REG_TIME, gps->utc_time & 0x00FFFFFF);
+	Xil_Out32(GPS_IP_BASEADDR + REG_DATE, gps->date     & 0x0000FFFF);
+
+    // atomic latch
+    Xil_Out32(GPS_IP_BASEADDR + REG_CONTROL, 0x01);
+}
+/***************************************************************************************************/
 
 AD9361_InitParam default_init_param = {
 	/* Device selection */
@@ -533,11 +615,7 @@ int main(void)
 	printf("Mode AC threshold GPIO (GPIO 1) Initialized Successfully.\n");
 
 //--------------------------------------------------------------------------------
-	XGpio_DiscreteWrite(&axi_gpio_inst_0, GPIO_CHANNEL_1, 0x0007); //device id
 
-	XGpio_DiscreteWrite(&axi_gpio_inst_1, GPIO_CHANNEL_1, 0x190);
-
-//--------------------------------------------------------------------------------
 
 
 
@@ -593,8 +671,18 @@ int main(void)
 	dds_update(ad9361_phy);
 	printf("rx_samp_freq set to : %lu\n", sampling_freq_hz);
 
+
+//--------------------------------------------------------------------------------
 	gain_db = 36;
 	gain_db1 = 42;
+	
+	XGpio_DiscreteWrite(&axi_gpio_inst_0, GPIO_CHANNEL_1, 0x0007); //device id
+
+	XGpio_DiscreteWrite(&axi_gpio_inst_1, GPIO_CHANNEL_1, 0x190);
+
+//--------------------------------------------------------------------------------
+
+
 	/* Set the receive RF gain for the selected channel. */
 	status = ad9361_set_rx_rf_gain (ad9361_phy, 0,gain_db);
 	if(status < 0)
@@ -708,6 +796,47 @@ int main(void)
 	uart_format.StopBits = XUARTPS_FORMAT_1_STOP_BIT;
 
 	status =  Uart_Init(&uartIRQCallbackRef, GPS_UART_DEVICE_ID, &uart_format);
+	
+	
+	XScuGic_Config *GicConfig;
+	// Initialize the interrupt controller driver
+	GicConfig = XScuGic_LookupConfig(XPAR_SCUGIC_SINGLE_DEVICE_ID);
+	if (NULL == GicConfig) {
+	    return XST_FAILURE;
+	}
+
+	status = XScuGic_CfgInitialize(&InterruptController, GicConfig,
+	                GicConfig->CpuBaseAddress);
+	if (status != XST_SUCCESS) {
+	    return XST_FAILURE;
+	}
+
+	// Set the priority and trigger type for the UART interrupt
+	XScuGic_SetPriorityTriggerType(&InterruptController, GPS_UART_INT_IRQ_ID,
+	                0xA0, 0x3);
+
+	// Connect the interrupt handler
+	status = XScuGic_Connect(&InterruptController, GPS_UART_INT_IRQ_ID,
+	             (Xil_ExceptionHandler)uart_irq_Handler,
+	             (void *)&uartIRQCallbackRef);
+	if (status != XST_SUCCESS) {
+	    return XST_FAILURE;
+	}
+
+	// Enable the interrupt for the UART
+	XScuGic_Enable(&InterruptController, GPS_UART_INT_IRQ_ID);
+
+	// Enable interrupts in the Processor
+	Xil_ExceptionInit();
+	Xil_ExceptionRegisterHandler(XIL_EXCEPTION_ID_IRQ_INT,
+	             (Xil_ExceptionHandler)XScuGic_InterruptHandler,
+	             &InterruptController);
+	Xil_ExceptionEnable();
+
+	// Finally, enable the Timeout interrupt on the UART peripheral itself
+	XUartPs_SetInterruptMask(uartIRQCallbackRef.XUartPsObj, XUARTPS_IXR_TOUT | XUARTPS_IXR_RXOVR);
+
+	printf("Interrupt system initialized successfully.\n");
 	//	u8 uart2gps_disable_gxgsa[]={0xB5,0x62,0x06,0x01,0x03,0x00,0xF0,0x02,0x00,0xFC,0x13};
 	//	u8 uart2gps_disable_gxgsv[]={0xB5,0x62,0x06,0x01,0x03,0x00,0xF0,0x03,0x00,0xFD,0x15};
 	//	u8 uart2gps_disable_gxgll[]={0xB5,0x62,0x06,0x01,0x03,0x00,0xF0,0x01,0x00,0xFB,0x11};
@@ -742,6 +871,7 @@ int main(void)
 	u8 save_data[] = {0xB5, 0x62, 0x06, 0x09, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x31, 0xBF};
 	uart_send(uartIRQCallbackRef.XUartPsObj,save_data,sizeof(save_data));usleep(2000);
 
+
 //////////////////////////////////////////////Setup ends//////////////////////////////////
 
 
@@ -753,6 +883,55 @@ int main(void)
 
 
 while(1) {
+	    // Check if the interrupt handler has set the timeout flag
+    if (uartIRQCallbackRef.uart_time_out_flag == 1) {
+
+        // Disable interrupts to safely access the shared buffer.
+        Xil_ExceptionDisable();
+
+        // Null-terminate the received data to treat it as a string
+        if (uartIRQCallbackRef.TotalRecvCnt > 0 && uartIRQCallbackRef.TotalRecvCnt < buffSize) {
+
+        	uartRecvBufferMain[uartIRQCallbackRef.TotalRecvCnt] = '\0';
+            xil_printf("%s\n", uartRecvBufferMain);
+
+
+
+            //Parsing Logic
+            uint8_t pl_pkt[GPS_PL_PACKET_SIZE];
+            size_t pl_len = 0;
+
+            if (gpsv_process_block(&gps_ctx, (const char*)uartRecvBufferMain,
+                                   pl_pkt, &pl_len)) {
+
+                // Debug print
+                xil_printf("GPS packet ready (%d bytes)\n", pl_len);
+                for (size_t i = 0; i < pl_len; i++) {
+                    xil_printf("%02X ", pl_pkt[i]);
+                }
+                xil_printf("\n");
+
+                // pl_pkt[0..19] into AXI-Lite registers
+                gps_from_pl_pkt_be(pl_pkt, pl_len, &my_gps_reading);
+                //uint32_t hhmmss = my_gps_reading.utc_time & 0x00FFFFFF;
+                uint32_t hhmmss = my_gps_reading.utc_time;
+                xil_printf("%02X ", hhmmss);
+                send_gps_to_pl(&my_gps_reading);
+
+                xil_printf("\nNew GPS data sent to PL.\n\n");
+            }
+
+
+        }
+
+        // Reset the flag and buffer for the next message
+        uartIRQCallbackRef.uart_time_out_flag = 0;
+        uartIRQCallbackRef.TotalRecvCnt = 0;
+        uartIRQCallbackRef.uart_RecvBufferPtr = uartRecvBufferMain;
+
+        // Re-enable interrupts
+        Xil_ExceptionEnable();
+    }
 }
 
 

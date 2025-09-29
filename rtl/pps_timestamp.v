@@ -21,6 +21,7 @@ module pps_timestamp #(
     input  wire                         pps,
     input  wire                         event_detected,
     input  wire                         confirm,
+    input  wire [UTC_SECONDS_WIDTH-1:0] gps_utc_sec,
 
     // Event-captured outputs:
     output reg  [UTC_SECONDS_WIDTH-1:0]       event_utc_seconds,
@@ -34,8 +35,16 @@ module pps_timestamp #(
     reg  [COUNT_LAST_SECOND_WIDTH-1:0] latched_clk_counter;
     reg  [UTC_SECONDS_WIDTH-1:0]       latched_pps_count;
     reg  signed [DRIFT_COUNT_WIDTH-1:0] latched_drift;
+    reg  signed [DRIFT_COUNT_WIDTH-1:0] drift_est;
+
     reg event_detected_d =0;
     reg confirm_d =0;
+    reg        fabricated_pps;
+    reg        started;
+    reg        utc_aligned;
+
+// Parameters
+    localparam integer MARGIN = 5;  // tolerance in cycles
     //--------------------------------------------------
     // 1.  PPS synchronizer   (asynchronous ? clk domain)
     //--------------------------------------------------
@@ -54,43 +63,70 @@ module pps_timestamp #(
             pps_sync_d <= pps_sync;        // For edge detection
         end
     end
-    wire pps_rise = pps_sync & ~pps_sync_d;  // 1-clock strobe
     
-    //--------------------------------------------------
-    // 2. Free-running counter reset on synchronized PPS
-    //--------------------------------------------------
-    reg [COUNT_LAST_SECOND_WIDTH-1:0] prev_cycles;
+    wire pps_rise = pps_sync & ~pps_sync_d;  // 1-clock strobe
+    wire pps_event = pps_rise | fabricated_pps;
+
+    // Start flag logic
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            clk_counter <= 0;
-            prev_cycles <= 0;
+            started <= 1'b0;
         end else if (pps_rise) begin
-            prev_cycles <= clk_counter - 1'b1;  // exact cycles in the second
-            clk_counter <= 0;
-        end else begin
-            clk_counter <= clk_counter + 1'b1;
+            started <= 1'b1;
         end
     end
     
-    //--------------------------------------------------
-    // 3. UTC-seconds counter (rolls over every 60?s)
-    //--------------------------------------------------;
+    // Free-running counter
     always @(posedge clk or posedge rst) begin
-        if (rst)
-            pps_count <= 0;
-        else if (pps_rise)
-            pps_count <= (pps_count == 6'd59) ? 0 : pps_count + 1'b1;
+        if (rst) begin
+            clk_counter <= 0;
+            fabricated_pps <= 1'b0;
+        end else if (started) begin
+            if (pps_rise) begin
+                clk_counter <= 0;
+                fabricated_pps <= 1'b0;
+            end else if (clk_counter >= NOMINAL_CYCLES_PER_SEC + drift + MARGIN) begin
+                // No PPS arrived in time, fabricate one
+                clk_counter <= 5;
+                fabricated_pps <= 1'b1;
+            end else begin
+                clk_counter <= clk_counter + 1'b1;
+                fabricated_pps <= 1'b0;
+            end
+        end
     end
-    
-    
-    //--------------------------------------------------
-    // 5. Drift computation (using asynchronous capture)
-    //--------------------------------------------------
+   
     always @(posedge clk or posedge rst) begin
-        if (rst)
+    if (rst) begin
+        pps_count   <= 0;
+        utc_aligned <= 1'b0;
+    end else if (started) begin
+        // --- One-time correction ---
+        if (!utc_aligned && (gps_utc_sec != 6'd0) && (clk_counter >= 100)) begin
+            pps_count   <= gps_utc_sec;
+            utc_aligned <= 1'b1;   
+        end
+        else if (pps_event) begin
+            pps_count <= (pps_count == 6'd59) ? 0 : pps_count + 1'b1;
+        end
+    end
+end
+
+    // Drift computation
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
             drift <= 0;
-        else if (pps_rise)
-            drift <= $signed(clk_counter) - $signed(NOMINAL_CYCLES_PER_SEC);
+            drift_est <= 0;
+        end else if (started && pps_event) begin
+            if (fabricated_pps) begin
+                // Use last known drift as an estimate
+                drift <= drift_est;
+            end else begin
+                // Normal drift computation
+                drift <= $signed(clk_counter) - $signed(NOMINAL_CYCLES_PER_SEC);
+                drift_est <= drift;  // update estimate
+            end
+        end
     end
     
     //--------------------------------------------------
@@ -143,5 +179,4 @@ module pps_timestamp #(
     end
 
 endmodule
-
 

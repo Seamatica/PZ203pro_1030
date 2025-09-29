@@ -40,46 +40,102 @@ int Uart_Init(struct uartIRQcallback* uartIRQCB, u16 DeviceId, XUartPsFormat* ua
 }
 
 
+//void uart_irq_Handler(void *CallBackRef)
+//{
+//	struct uartIRQcallback* uartIRQcallbackPtr = (struct uartIRQcallback* )CallBackRef;
+//
+//	XUartPs *UartInstancePtr = uartIRQcallbackPtr->XUartPsObj;
+//	u32 ReceivedCount = 0 ;
+//	u32 IsrStatus ;
+//
+//	IsrStatus = XUartPs_ReadReg(UartInstancePtr->Config.BaseAddress,
+//				   XUARTPS_IMR_OFFSET);
+//	IsrStatus &= XUartPs_ReadReg(UartInstancePtr->Config.BaseAddress,
+//				   XUARTPS_ISR_OFFSET);
+//
+//	if (IsrStatus & (u32)XUARTPS_IXR_RXOVR)
+//	{
+//		if(uartIRQcallbackPtr->TotalRecvCnt +8 + 1 < uartIRQcallbackPtr->uart_BUFFER_SIZE){
+//			ReceivedCount = XUartPs_Recv(UartInstancePtr, uartIRQcallbackPtr->uart_RecvBufferPtr, (uartIRQcallbackPtr->uart_BUFFER_SIZE - uartIRQcallbackPtr->TotalRecvCnt)) ;
+//			uartIRQcallbackPtr->TotalRecvCnt += ReceivedCount ;
+//			uartIRQcallbackPtr->uart_RecvBufferPtr += ReceivedCount ;
+//		}
+//
+//		XUartPs_WriteReg(UartInstancePtr->Config.BaseAddress, XUARTPS_ISR_OFFSET, XUARTPS_IXR_RXOVR) ;
+//
+//	}
+//
+//	if(IsrStatus & (u32)XUARTPS_IXR_TOUT){
+//		uartIRQcallbackPtr->uart_time_out_flag = 1;
+//		if(uartIRQcallbackPtr->TotalRecvCnt +8 + 1 < uartIRQcallbackPtr->uart_BUFFER_SIZE){
+//			ReceivedCount = XUartPs_Recv(UartInstancePtr, uartIRQcallbackPtr->uart_RecvBufferPtr, (uartIRQcallbackPtr->uart_BUFFER_SIZE - uartIRQcallbackPtr->TotalRecvCnt)) ;
+//			uartIRQcallbackPtr->TotalRecvCnt += ReceivedCount ;
+//			uartIRQcallbackPtr->uart_RecvBufferPtr += ReceivedCount ;
+//		}
+//
+//		XUartPs_WriteReg(UartInstancePtr->Config.BaseAddress, XUARTPS_ISR_OFFSET, XUARTPS_IXR_TOUT) ;
+//		//uartIRQcallbackPtr->uart_RecvBufferPtr = uartIRQcallbackPtr->uart_RecvBuffer;
+//		//uartIRQcallbackPtr->TotalRecvCnt = 0;
+//	}
+//
+//}
+
 void uart_irq_Handler(void *CallBackRef)
 {
 	struct uartIRQcallback* uartIRQcallbackPtr = (struct uartIRQcallback* )CallBackRef;
-
 	XUartPs *UartInstancePtr = uartIRQcallbackPtr->XUartPsObj;
-	u32 ReceivedCount = 0 ;
-	u32 IsrStatus ;
+	u32 ReceivedCount = 0;
+	u32 IsrStatus;
+    u32 MaskedStatus;
 
-	IsrStatus = XUartPs_ReadReg(UartInstancePtr->Config.BaseAddress,
-				   XUARTPS_IMR_OFFSET);
-	IsrStatus &= XUartPs_ReadReg(UartInstancePtr->Config.BaseAddress,
-				   XUARTPS_ISR_OFFSET);
 
-	if (IsrStatus & (u32)XUARTPS_IXR_RXOVR)
+	/*
+	 * Read the Interrupt Status Register to determine which
+	 * interrupt is active.
+	 */
+	IsrStatus = XUartPs_ReadReg(UartInstancePtr->Config.BaseAddress, XUARTPS_ISR_OFFSET);
+
+	/*
+	 * VERY IMPORTANT:
+	 * Immediately clear all the pending interrupt flags by writing the status
+	 * value back to the Interrupt Status Register.
+	 */
+	XUartPs_WriteReg(UartInstancePtr->Config.BaseAddress, XUARTPS_ISR_OFFSET, IsrStatus);
+
+    /*
+     * Now, figure out which of the interrupts that fired are the ones
+     * we have enabled (i.e., are not masked).
+     */
+    MaskedStatus = IsrStatus & XUartPs_ReadReg(UartInstancePtr->Config.BaseAddress, XUARTPS_IMR_OFFSET);
+
+
+	if (MaskedStatus & (u32)XUARTPS_IXR_RXOVR)
 	{
-		if(uartIRQcallbackPtr->TotalRecvCnt +8 + 1 < uartIRQcallbackPtr->uart_BUFFER_SIZE){
-			ReceivedCount = XUartPs_Recv(UartInstancePtr, uartIRQcallbackPtr->uart_RecvBufferPtr, (uartIRQcallbackPtr->uart_BUFFER_SIZE - uartIRQcallbackPtr->TotalRecvCnt)) ;
-			uartIRQcallbackPtr->TotalRecvCnt += ReceivedCount ;
-			uartIRQcallbackPtr->uart_RecvBufferPtr += ReceivedCount ;
+		/*
+		 * The Receive FIFO is full. Read the data from the FIFO.
+		 */
+		if(uartIRQcallbackPtr->TotalRecvCnt + 8 + 1 < uartIRQcallbackPtr->uart_BUFFER_SIZE){
+			ReceivedCount = XUartPs_Recv(UartInstancePtr, uartIRQcallbackPtr->uart_RecvBufferPtr, (uartIRQcallbackPtr->uart_BUFFER_SIZE - uartIRQcallbackPtr->TotalRecvCnt));
+			uartIRQcallbackPtr->TotalRecvCnt += ReceivedCount;
+			uartIRQcallbackPtr->uart_RecvBufferPtr += ReceivedCount;
 		}
-
-		XUartPs_WriteReg(UartInstancePtr->Config.BaseAddress, XUARTPS_ISR_OFFSET, XUARTPS_IXR_RXOVR) ;
-
+		// NOTE: The flag was already cleared above. No need to clear it here again.
 	}
 
-	if(IsrStatus & (u32)XUARTPS_IXR_TOUT){
+	if(MaskedStatus & (u32)XUARTPS_IXR_TOUT){
+		/*
+		 * A receive timeout has occurred. This likely means we have received a
+		 * complete message. Set the flag for the main loop to process it.
+		 */
 		uartIRQcallbackPtr->uart_time_out_flag = 1;
-		if(uartIRQcallbackPtr->TotalRecvCnt +8 + 1 < uartIRQcallbackPtr->uart_BUFFER_SIZE){
-			ReceivedCount = XUartPs_Recv(UartInstancePtr, uartIRQcallbackPtr->uart_RecvBufferPtr, (uartIRQcallbackPtr->uart_BUFFER_SIZE - uartIRQcallbackPtr->TotalRecvCnt)) ;
-			uartIRQcallbackPtr->TotalRecvCnt += ReceivedCount ;
-			uartIRQcallbackPtr->uart_RecvBufferPtr += ReceivedCount ;
+		if(uartIRQcallbackPtr->TotalRecvCnt + 8 + 1 < uartIRQcallbackPtr->uart_BUFFER_SIZE){
+			ReceivedCount = XUartPs_Recv(UartInstancePtr, uartIRQcallbackPtr->uart_RecvBufferPtr, (uartIRQcallbackPtr->uart_BUFFER_SIZE - uartIRQcallbackPtr->TotalRecvCnt));
+			uartIRQcallbackPtr->TotalRecvCnt += ReceivedCount;
+			uartIRQcallbackPtr->uart_RecvBufferPtr += ReceivedCount;
 		}
-
-		XUartPs_WriteReg(UartInstancePtr->Config.BaseAddress, XUARTPS_ISR_OFFSET, XUARTPS_IXR_TOUT) ;
-		uartIRQcallbackPtr->uart_RecvBufferPtr = uartIRQcallbackPtr->uart_RecvBuffer;
-		uartIRQcallbackPtr->TotalRecvCnt = 0;
+        // NOTE: The flag was already cleared above. No need to clear it here again.
 	}
-
 }
-
 
 void uart_send(XUartPs *InstancePtr,u8 *data, int length){
 	int SentCount = 0;
