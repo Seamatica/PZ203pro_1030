@@ -1,3 +1,5 @@
+This is the stable version for 1030 on pz203. Outputs 11 bytes.
+
 ## How to Setup Project
 
 ### Run these Commands in CMD prompt one by one within this directory:
