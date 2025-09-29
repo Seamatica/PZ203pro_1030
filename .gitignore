@@ -25,6 +25,6 @@ Packages/
 webtalk*.html
 webtalk*.xml
 
-
+*.dmp
 # Other generated folders you might have
 NA/

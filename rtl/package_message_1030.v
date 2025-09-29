@@ -44,16 +44,17 @@ module package_message_1030 (
                     mode_ac_message
                 };
                 valid_out <= 1'b1;
-            end else if (valid_drift) begin
-                packed_message <= {
-                    21'h1FABAD,
-                    device_id, // device id 
-                    pps_count,              
-                    3'b100,
-                    drift_message 
-                };
-                valid_out <= 1'b1;
             end 
+//            else if (valid_drift) begin
+//                packed_message <= {
+//                    21'h1FABAD,
+//                    device_id, // device id 
+//                    pps_count,              
+//                    3'b100,
+//                    drift_message 
+//                };
+//                valid_out <= 1'b1;
+//            end 
         end
     end
 
