@@ -1,10 +1,9 @@
-// test comment
 module net_udp_loop(
     input              clk_200m,
     input              clk_50m,
     input              sys_rst_n,    // System Reset, active low
     
-    input wire [87:0] i_payload,
+    input wire [PAYLOAD_BITS - 1:0] i_payload,
     input wire         trigger_valid,
     
     // ip address configurations
@@ -28,12 +27,15 @@ module net_udp_loop(
     output             net_rst_n     // PHY Reset, active low
     );
 
+
+
 // --- Configuration Parameters ---
+parameter  PAYLOAD_BITS = 88; 
+
 parameter  IDELAY_VALUE = 0;
 
-
 // UDP Packet Settings
-parameter  UDP_PAYLOAD_BYTES = 11; // Set the desired number of data bytes per packet
+parameter  UDP_PAYLOAD_BYTES = (PAYLOAD_BITS + 7) / 8; // Set the desired number of data bytes per packet
 
 // --- Wires and Registers ---
 wire          gmii_rx_clk;      // GMII Receive Clock
@@ -95,22 +97,16 @@ assign tx_start_en = trigger_valid;
 // Data payload generator
 // 24 bytes => 6 words
 localparam integer WORDS = (UDP_PAYLOAD_BYTES + 3) / 4;
+localparam PADDED_PAYLOAD_BITS = WORDS * 32;
 
 //reg  [191:0] payload = 192'h0123_4567_89AB_CDEF_FEDC_BA98_7654_3210_8888_8888_8888_8888;
-wire [87:0] payload; 
-assign payload = i_payload;
-reg  [2:0]   word_idx;
+wire [PADDED_PAYLOAD_BITS - 1:0] padded_payload; 
+assign padded_payload = {i_payload, {(PADDED_PAYLOAD_BITS - PAYLOAD_BITS){1'b0}}};
+
+reg  [$clog2(WORDS)-1:0]   word_idx;
 reg  [31:0]  tx_data_r;
 assign tx_data = tx_data_r; // to udp/udp_tx
 
-// convenient MSB-first slicing: [base -: width]
-wire [31:0] word_msb_first [0:2];
-assign word_msb_first[0] = payload[87 -: 32];
-assign word_msb_first[1] = payload[55 -: 32];
-assign word_msb_first[2] = {payload[23 : 0], 8'h0};
-//assign word_msb_first[3] = payload[ 95 -: 32];
-//assign word_msb_first[4] = payload[ 63 -: 32];
-//assign word_msb_first[5] = payload[ 31 -: 32];
 
 always @(posedge gmii_tx_clk or negedge sys_rst_n) begin
   if (!sys_rst_n) begin
@@ -119,7 +115,7 @@ always @(posedge gmii_tx_clk or negedge sys_rst_n) begin
   end else begin
     if (tx_start_en) word_idx <= 0;           // new packet
     if (tx_req) begin                          // udp_tx asking for NEXT 32b
-      tx_data_r <= word_msb_first[word_idx];   // load just-in-time
+      tx_data_r <= padded_payload[(PADDED_PAYLOAD_BITS - 1) - (word_idx * 32) -: 32];
       word_idx  <= (word_idx == WORDS-1) ? 0 : (word_idx + 1);
     end
   end
