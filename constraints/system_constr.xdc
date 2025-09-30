@@ -100,6 +100,7 @@ set_property -dict {PACKAGE_PIN V6 IOSTANDARD LVCMOS25} [get_ports TRX2_TX_nRX]
 
 create_clock -period 8.000 -name rx_clk [get_ports rx_clk_in_p]
 
+
 create_debug_core u_ila_0 ila
 set_property ALL_PROBE_SAME_MU true [get_debug_cores u_ila_0]
 set_property ALL_PROBE_SAME_MU_CNT 4 [get_debug_cores u_ila_0]
@@ -114,6 +115,10 @@ connect_debug_port u_ila_0/clk [get_nets [list i_system_wrapper/system_i/util_ad
 set_property PROBE_TYPE DATA_AND_TRIGGER [get_debug_ports u_ila_0/probe0]
 set_property port_width 16 [get_debug_ports u_ila_0/probe0]
 connect_debug_port u_ila_0/probe0 [get_nets [list {i_system_wrapper/system_i/magnitude_approx_0_magnitude[0]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[1]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[2]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[3]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[4]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[5]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[6]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[7]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[8]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[9]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[10]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[11]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[12]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[13]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[14]} {i_system_wrapper/system_i/magnitude_approx_0_magnitude[15]}]]
+create_debug_port u_ila_0 probe
+set_property PROBE_TYPE DATA_AND_TRIGGER [get_debug_ports u_ila_0/probe1]
+set_property port_width 16 [get_debug_ports u_ila_0/probe1]
+connect_debug_port u_ila_0/probe1 [get_nets [list {i_system_wrapper/system_i/mavg_fir_0_avg_out[0]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[1]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[2]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[3]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[4]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[5]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[6]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[7]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[8]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[9]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[10]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[11]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[12]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[13]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[14]} {i_system_wrapper/system_i/mavg_fir_0_avg_out[15]}]]
 set_property C_CLK_INPUT_FREQ_HZ 300000000 [get_debug_cores dbg_hub]
 set_property C_ENABLE_CLK_DIVIDER false [get_debug_cores dbg_hub]
 set_property C_USER_SCAN_CHAIN 1 [get_debug_cores dbg_hub]
