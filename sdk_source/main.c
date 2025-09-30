@@ -673,12 +673,12 @@ int main(void)
 
 
 //--------------------------------------------------------------------------------
-	gain_db = 36;
+	gain_db = 36;  //rx1 channel gain
 	gain_db1 = 42;
 	
 	XGpio_DiscreteWrite(&axi_gpio_inst_0, GPIO_CHANNEL_1, 0x0007); //device id
 
-	XGpio_DiscreteWrite(&axi_gpio_inst_1, GPIO_CHANNEL_1, 0x190);
+	XGpio_DiscreteWrite(&axi_gpio_inst_1, GPIO_CHANNEL_1, 0x190); // threshold
 
 //--------------------------------------------------------------------------------
 
