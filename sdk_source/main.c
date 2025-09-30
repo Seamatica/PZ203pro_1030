@@ -881,7 +881,10 @@ int main(void)
 	else
 		printf("no rx2-tx2\r\n");
 
-
+	static GpsValidatorCtx gps_ctx;
+	gpsv_init(&gps_ctx);
+	gps_message_t my_gps_reading;
+	
 while(1) {
 	    // Check if the interrupt handler has set the timeout flag
     if (uartIRQCallbackRef.uart_time_out_flag == 1) {
